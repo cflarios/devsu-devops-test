@@ -5,4 +5,4 @@ packages:
   - docker.io
 runcmd:
   - cd /root
-  - docker run -d -p 80:80 cflarios/devsu_devops_assessment:latest devsu
+  - docker run -d -p 80:3001 cflarios/devsu_devops_assessment:latest devsu

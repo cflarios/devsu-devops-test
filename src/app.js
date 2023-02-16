@@ -1,4 +1,6 @@
-const express = require('express');
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+import express from 'express';
 const app = express();
 
 // Environment variables
@@ -14,7 +16,7 @@ app.post('/DevOps', (req, res) => {
 
     // Check if API key and JWT key are correct
     if(apiKeyReceived !== process.env.API_KEY || jwtHeader !== process.env.JWT_SECRET) {
-        return res.send('ERROR');
+        return res.status(404).send('ERROR');
     }
 
     // Get data from request
@@ -22,14 +24,12 @@ app.post('/DevOps', (req, res) => {
 
     // Check if data is correct
     if (!message || !to || !from || !timeToLifeSec) {
-        return res.send('ERROR');
+        return res.status(404).send('ERROR');
     }
 
     // Return message
-    return res.json({ message: `Hello ${to} your message will be send` })
+    return res.status(200).json({ message: `Hello ${to} your message will be send` })
 });
 
-// Start server
-app.listen(process.env.API_PORT, () => {
-    console.log('Server is running on port ' + process.env.API_PORT);
-});
+// Export app
+export default app;

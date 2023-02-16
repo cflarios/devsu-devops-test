@@ -1,47 +1,155 @@
-resource "digitalocean_loadbalancer" "public" {
-  name   = "devsu"
-  region = "nyc1"
-  
-  forwarding_rule {
-    entry_port     = 80
-    entry_protocol = "http"
-    
-    target_port     = 80
-    target_protocol = "http"
+terraform {
+  required_providers {
+    digitalocean = {
+      source  = "digitalocean/digitalocean"
+      version = ">= 2.4.0"
+    }
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+      version = ">= 2.7.0"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = ">= 2.0.1"
+    }
   }
-
-  healthcheck {
-    port     = 22
-    protocol = "tcp"
-    check_interval_seconds = 10
-    response_timeout_seconds = 10
-  }
-
-  droplet_ids = digitalocean_droplet.example.*.id
 }
 
-resource "digitalocean_droplet" "example" {
-  count = 2
+data "digitalocean_kubernetes_cluster" "primary" {
+  name = var.cluster_name
+}
 
-  image  = "ubuntu-20-04-x64"
-  name   = "devsu-${count.index+1}"
-  region = "nyc1"
-  size   = "s-1vcpu-1gb"
-  ssh_keys = ["${digitalocean_ssh_key.cflarios.fingerprint}"]
+resource "local_file" "kubeconfig" {
+  depends_on = [var.cluster_id]
+  count      = var.write_kubeconfig ? 1 : 0
+  content    = data.digitalocean_kubernetes_cluster.primary.kube_config[0].raw_config
+  filename   = "${path.root}/kubeconfig"
+}
 
-  connection {
-    type = "ssh"
-    user = "root"
-    private_key = file("~/.ssh/id_rsa")
-    host = self.ipv4_address
+provider "kubernetes" {
+  host             = data.digitalocean_kubernetes_cluster.primary.endpoint
+  token            = data.digitalocean_kubernetes_cluster.primary.kube_config[0].token
+  cluster_ca_certificate = base64decode(
+    data.digitalocean_kubernetes_cluster.primary.kube_config[0].cluster_ca_certificate
+  )
+}
+
+provider "helm" {
+  kubernetes {
+    host  = data.digitalocean_kubernetes_cluster.primary.endpoint
+    token = data.digitalocean_kubernetes_cluster.primary.kube_config[0].token
+    cluster_ca_certificate = base64decode(
+      data.digitalocean_kubernetes_cluster.primary.kube_config[0].cluster_ca_certificate
+    )
+  }
+}
+
+resource "kubernetes_namespace" "test" {
+  metadata {
+    name = "test"
+  }
+}
+
+resource "kubernetes_deployment" "test" {
+  metadata {
+    name = "test"
+    namespace= kubernetes_namespace.test.metadata.0.name
+  }
+  spec {
+    replicas = 2
+    selector {
+      match_labels = {
+        app = "test"
+      }
+    }
+    template {
+      metadata {
+        labels = {
+          app  = "test"
+        }
+      }
+      spec {
+        container {
+          image = "hashicorp/http-echo"
+          name  = "http-echo"
+          args  = ["-text=test"]
+
+          resources {
+            limits = {
+              memory = "512M"
+              cpu = "1"
+            }
+            requests = {
+              memory = "256M"
+              cpu = "50m"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service" "test" {
+  metadata {
+    name      = "test-service"
+    namespace = kubernetes_namespace.test.metadata.0.name
+  }
+  spec {
+    selector = {
+      app = kubernetes_deployment.test.metadata.0.name
+    }
+
+    port {
+      port = 5678
+    }
+  }
+}
+
+resource "helm_release" "nginx_ingress" {
+  name       = "nginx-ingress-controller"
+  namespace  = kubernetes_namespace.test.metadata.0.name
+
+  repository = "https://charts.bitnami.com/bitnami"
+  chart      = "nginx-ingress-controller"
+
+  set {
+    name  = "service.type"
+    value = "LoadBalancer"
+  }
+  set {
+    name  = "service.annotations.service\\.beta\\.kubernetes\\.io/do-loadbalancer-name"
+    value = format("%s-nginx-ingress", var.cluster_name)
+  }
+}
+
+resource "kubernetes_ingress_v1" "test_ingress" {
+  wait_for_load_balancer = true
+  metadata {
+    name = "test-ingress"
+    namespace  = kubernetes_namespace.test.metadata.0.name
+    annotations = {
+      "kubernetes.io/ingress.class" = "nginx"
+      "ingress.kubernetes.io/rewrite-target" = "/"
+    }
   }
 
-  provisioner "remote-exec" {
-    inline = [
-      "sudo apt update",
-      "while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 ; do sleep 1 ; done",
-      "sudo apt install -y docker.io",
-      "sudo docker run -d -p 80:3001 cflarios/devsu_devops_assessment:latest"
-    ]
+  spec {
+    rule {
+      http {
+        path {
+          backend {
+            service {
+              name = kubernetes_service.test.metadata.0.name
+              port {
+                number = 5678
+              }
+            }
+          }
+
+          path = "/test"
+        }
+      }
+    }
   }
 }

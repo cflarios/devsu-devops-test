@@ -3,16 +3,17 @@ name: Docker Pipeline
 on:
   push:
     branches:
-      - main
+      - '*'
   pull_request:
     branches:
-      - main
+      - '*'
 
 env:
   DOCKER_IMAGE: cflarios/devsu_devops_assessment
 
 jobs:
   test:
+    name: API Test
     runs-on: ubuntu-latest
 
     steps:
@@ -41,6 +42,7 @@ jobs:
         run: npm test
 
   build:
+    name: Build Docker Image
     needs: test
 
     runs-on: ubuntu-latest
@@ -77,10 +79,12 @@ jobs:
             ${{ env.DOCKER_IMAGE }}:latest
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
 
-  push:
+  push_prod:
+    name: Push to Docker Hub
     needs: build
 
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout

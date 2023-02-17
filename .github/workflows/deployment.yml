@@ -79,8 +79,8 @@ jobs:
             ${{ env.DOCKER_IMAGE }}:latest
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
 
-  push_prod:
-    name: Push to Docker Hub
+  deploy:
+    name: deploy to cluster
     needs: build
 
     runs-on: ubuntu-latest
@@ -115,3 +115,15 @@ jobs:
           tags: |
             ${{ env.DOCKER_IMAGE }}:latest
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+
+      - name: deploy to cluster
+        uses: steebchen/kubectl@v2.0.0
+        with:
+          config: ${{ secrets.KUBE_CONFIG_DATA }}
+          command: set image --record  deployment/my-app container=${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+      
+      - name: verify deployment
+        uses: steebchen/kubectl@v2.0.0
+        with:
+          config: ${{ secrets.KUBE_CONFIG_DATA }}
+          command: rollout status deployment/my-app

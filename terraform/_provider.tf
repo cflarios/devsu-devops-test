@@ -1,5 +1,3 @@
-variable "digitalocean_token" {}
-
 terraform {
     required_version = ">= 0.14.0"
 
@@ -12,5 +10,5 @@ terraform {
 
 # Configure the DigitalOcean provider
 provider "digitalocean" {
-    token = "${var.digitalocean_token}"
+    token = var.digitalocean_token
 }

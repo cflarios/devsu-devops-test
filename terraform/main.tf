@@ -1,155 +1,84 @@
-terraform {
-  required_providers {
-    digitalocean = {
-      source  = "digitalocean/digitalocean"
-      version = ">= 2.4.0"
-    }
-    kubernetes = {
-      source = "hashicorp/kubernetes"
-      version = ">= 2.7.0"
-    }
-    helm = {
-      source  = "hashicorp/helm"
-      version = ">= 2.0.1"
-    }
+resource "digitalocean_kubernetes_cluster" "k8s" {
+  name    = "k8s"
+  region  = var.region
+  version = var.k8s_version
+  tags    = ["k8s"]
+  node_pool {
+    name       = "default"
+    size       = "s-1vcpu-2gb"
+    tags       = ["k8s", "worker", "default"]
+    node_count = var.node_count
+    auto_scale = true
+    min_nodes  = var.min_nodes
+    max_nodes  = var.max_nodes
   }
 }
 
-data "digitalocean_kubernetes_cluster" "primary" {
-  name = var.cluster_name
-}
+# resource "kubernetes_deployment_v1" "api" {
+#   metadata {
+#     name      = "api"
+#     namespace = "kube-system"
 
-resource "local_file" "kubeconfig" {
-  depends_on = [var.cluster_id]
-  count      = var.write_kubeconfig ? 1 : 0
-  content    = data.digitalocean_kubernetes_cluster.primary.kube_config[0].raw_config
-  filename   = "${path.root}/kubeconfig"
-}
+#     labels = {
+#       app = "api"
+#     }
+#   }
 
-provider "kubernetes" {
-  host             = data.digitalocean_kubernetes_cluster.primary.endpoint
-  token            = data.digitalocean_kubernetes_cluster.primary.kube_config[0].token
-  cluster_ca_certificate = base64decode(
-    data.digitalocean_kubernetes_cluster.primary.kube_config[0].cluster_ca_certificate
-  )
-}
+#   spec {
+#     replicas = 2
 
-provider "helm" {
-  kubernetes {
-    host  = data.digitalocean_kubernetes_cluster.primary.endpoint
-    token = data.digitalocean_kubernetes_cluster.primary.kube_config[0].token
-    cluster_ca_certificate = base64decode(
-      data.digitalocean_kubernetes_cluster.primary.kube_config[0].cluster_ca_certificate
-    )
-  }
-}
+#     selector {
+#       match_labels = {
+#         app = "api"
+#       }
+#     }
 
-resource "kubernetes_namespace" "test" {
-  metadata {
-    name = "test"
-  }
-}
+#     template {
+#       metadata {
+#         labels = {
+#           app = "api"
+#         }
+#       }
 
-resource "kubernetes_deployment" "test" {
-  metadata {
-    name = "test"
-    namespace= kubernetes_namespace.test.metadata.0.name
-  }
-  spec {
-    replicas = 2
-    selector {
-      match_labels = {
-        app = "test"
-      }
-    }
-    template {
-      metadata {
-        labels = {
-          app  = "test"
-        }
-      }
-      spec {
-        container {
-          image = "hashicorp/http-echo"
-          name  = "http-echo"
-          args  = ["-text=test"]
+#       spec {
+#         container {
+#           image = "cflarios/devsu_devops_assessment"
+#           name  = "api"
+#           port {
+#             container_port = 8080
+#           }
 
-          resources {
-            limits = {
-              memory = "512M"
-              cpu = "1"
-            }
-            requests = {
-              memory = "256M"
-              cpu = "50m"
-            }
-          }
-        }
-      }
-    }
-  }
-}
+#           resources {
+#             limits = {
+#               cpu    = "0.5"
+#               memory = "512Mi"
+#             }
+#             requests = {
+#               cpu    = "250m"
+#               memory = "50Mi"
+#             }
+#           }
+#         }
+#       }
+#     }
+#   }
+# }
 
-resource "kubernetes_service" "test" {
-  metadata {
-    name      = "test-service"
-    namespace = kubernetes_namespace.test.metadata.0.name
-  }
-  spec {
-    selector = {
-      app = kubernetes_deployment.test.metadata.0.name
-    }
-
-    port {
-      port = 5678
-    }
-  }
-}
-
-resource "helm_release" "nginx_ingress" {
-  name       = "nginx-ingress-controller"
-  namespace  = kubernetes_namespace.test.metadata.0.name
-
-  repository = "https://charts.bitnami.com/bitnami"
-  chart      = "nginx-ingress-controller"
-
-  set {
-    name  = "service.type"
-    value = "LoadBalancer"
-  }
-  set {
-    name  = "service.annotations.service\\.beta\\.kubernetes\\.io/do-loadbalancer-name"
-    value = format("%s-nginx-ingress", var.cluster_name)
-  }
-}
-
-resource "kubernetes_ingress_v1" "test_ingress" {
-  wait_for_load_balancer = true
-  metadata {
-    name = "test-ingress"
-    namespace  = kubernetes_namespace.test.metadata.0.name
-    annotations = {
-      "kubernetes.io/ingress.class" = "nginx"
-      "ingress.kubernetes.io/rewrite-target" = "/"
-    }
+resource "digitalocean_loadbalancer" "lb" {
+  name      = "my-lb"
+  region    = var.region
+  algorithm = "round_robin"
+  forwarding_rule {
+    entry_port      = 80
+    entry_protocol  = "http"
+    target_port     = 80
+    target_protocol = "http"
   }
 
-  spec {
-    rule {
-      http {
-        path {
-          backend {
-            service {
-              name = kubernetes_service.test.metadata.0.name
-              port {
-                number = 5678
-              }
-            }
-          }
-
-          path = "/test"
-        }
-      }
-    }
+  healthcheck {
+    protocol = "tcp"
+    port     = 22
   }
+
+  droplet_tag = "k8s"
 }

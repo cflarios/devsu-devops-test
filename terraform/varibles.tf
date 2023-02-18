@@ -1,7 +1,4 @@
-variable "digitalocean_token" {
-    description = "Digital Ocean API token"
-    default = var.digitalocean_token
-}
+variable "digitalocean_token" {}
 
 variable "region" {
   default = "nyc1"
@@ -18,10 +15,10 @@ variable "node_count" {
 
 variable "min_nodes" {
   description = "minimum number of nodes in the cluster"
-  default = 1
+  default = 2
 }
 
 variable "max_nodes" {
   description = "maximum number of nodes in the cluster"
-  default = 2
+  default = 3
 }

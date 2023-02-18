@@ -10,5 +10,9 @@ terraform {
 
 # Configure the DigitalOcean provider
 provider "digitalocean" {
-    token = var.digitalocean_token
+    token = "${var.digitalocean_token}"
+}
+
+provider "kubernetes" {
+    config_path = "${local_file.kubernetes_config.filename}"
 }

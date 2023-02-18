@@ -120,7 +120,7 @@ jobs:
         uses: steebchen/kubectl@v2.0.0
         with:
           config: ${{ secrets.KUBE_CONFIG_DATA }}
-          command: -n kube-system set image --record  deployment/api-terraform app=${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+          command: -n kube-system set image --record  deployment/api-terraform app=${{ env.DOCKER_IMAGE }}:latest
       
       - name: verify deployment
         uses: steebchen/kubectl@v2.0.0

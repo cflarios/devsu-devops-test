@@ -1,4 +1,4 @@
-import app from "../src/app.js";
+import app from '../src/app.js';
 
 // Start server
 app.listen(process.env.API_PORT, () => {

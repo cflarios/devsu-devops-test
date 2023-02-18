@@ -1,5 +1,7 @@
+# Define the name of the pipeline and the events that trigger it
 name: Docker Pipeline
 
+# This pipeline runs on any push to any branch and on any pull request to any branch
 on:
   push:
     branches:
@@ -8,18 +10,24 @@ on:
     branches:
       - '*'
 
+# Define an environment variable for the Docker image name
 env:
   DOCKER_IMAGE: cflarios/devsu_devops_assessment
 
+# Define the jobs that make up the pipeline
 jobs:
+  # Define the "test" job that runs the API tests
   test:
     name: API Test
     runs-on: ubuntu-latest
 
+    # Define the steps for the "test" job
     steps:
+      # Checkout the code from the repository
       - name: Checkout
         uses: actions/checkout@v3
 
+      # Add the environment variables to a file and display its content and the files in the directory
       - name: Env file
         env:
           ENV: ${{ secrets.ENV_FILE }}
@@ -30,32 +38,40 @@ jobs:
           echo "ls -a ."
           ls -a .
 
+      # Set up the Node.js environment for testing
       - name: Setup Node.js
         uses: actions/setup-node@v2
         with:
           node-version: 14
 
+      # Install the dependencies needed for testing
       - name: Install Dependencies
         run: npm install
 
+      # Run the tests
       - name: Run Tests
         run: npm test
 
+  # Define the "build" job that builds the Docker image
   build:
     name: Build Docker Image
     needs: test
 
     runs-on: ubuntu-latest
 
+    # Define the steps for the "build" job
     steps:
+      # Checkout the code from the repository
       - name: Checkout
         uses: actions/checkout@v3
 
+      # Set up the Node.js environment for building
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 14
 
+      # Add the environment variables to a file and display its content and the files in the directory
       - name: Env file
         env:
           ENV: ${{ secrets.ENV_FILE }}
@@ -66,9 +82,11 @@ jobs:
           echo "ls -a ."
           ls -a .
 
+      # Install the dependencies needed for building
       - name: Install Dependencies
         run: npm install
 
+      # Build the Docker image using the Dockerfile in the current directory
       - name: Build Docker Image
         uses: docker/build-push-action@v4
         with:
@@ -79,17 +97,22 @@ jobs:
             ${{ env.DOCKER_IMAGE }}:latest
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
 
+  # Define the "deploy" job that deploys the Docker image to the Kubernetes cluster
   deploy:
     name: deploy to cluster
     needs: build
 
     runs-on: ubuntu-latest
+    # Deploy only when pushing to the "main" branch
     if: github.ref == 'refs/heads/main'
 
+    # Define the steps for the "deploy" job
     steps:
+      # Checkout the code from the repository
       - name: Checkout
         uses: actions/checkout@v3
 
+      # Add the environment variables to a file and dipslay its content and the files in the directory
       - name: Env file
         env:
           ENV: ${{ secrets.ENV_FILE }}
@@ -100,12 +123,14 @@ jobs:
           echo "ls -a ."
           ls -a .
 
+      # Log in to Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # Build the Docker image and push it to Docker Hub
       - name: Build Docker Image
         uses: docker/build-push-action@v4
         with:
@@ -116,12 +141,14 @@ jobs:
             ${{ env.DOCKER_IMAGE }}:latest
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
 
+      # Deploy to kubernetes cluster
       - name: deploy to cluster
         uses: steebchen/kubectl@v2.0.0
         with:
           config: ${{ secrets.KUBE_CONFIG_DATA }}
           command: -n kube-system set image --record  deployment/api-terraform app=${{ env.DOCKER_IMAGE }}:latest
       
+      # Verify the kubernetes deployment
       - name: verify deployment
         uses: steebchen/kubectl@v2.0.0
         with:

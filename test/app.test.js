@@ -1,6 +1,5 @@
 import app from '../src/app.js';
 import request from 'supertest';
-import {describe, it, expect, test} from 'mocha';
 
 // Test if DevOps endpoint is working correctly
 describe('POST /DevOps', () => {
